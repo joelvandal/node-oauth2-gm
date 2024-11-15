@@ -1,14 +1,13 @@
-# Authentication Server for OnStar (GM)
+# Unofficial Node.js Library for OnStar Requests
 
-This repository contains an authentication server built with [Fastify](https://www.fastify.io/). The server is designed to integrate with OnStar (GM) services, implementing PKCE (Proof Key for Code Exchange) flows and integrating with an OpenID Connect provider for secure user authentication. It also handles token management and MFA (Multi-Factor Authentication).
-
-The original code for this project is based on [https://github.com/metheos/node-oauth2-gm](https://github.com/metheos/node-oauth2-gm).
+This repository contains an unofficial Node.js library designed to facilitate interaction with OnStar services. It provides support for secure authentication using PKCE (Proof Key for Code Exchange) flows, token management, and Multi-Factor Authentication (MFA), as well as issuing commands to OnStar-enabled vehicles. **Use at your own risk** as this is an unofficial implementation.
 
 ## Features
-- **PKCE Authentication Flow**: Implements the PKCE flow for secure authentication without a client secret.
-- **MFA Support**: Requests and verifies multi-factor authentication codes via email.
-- **Token Management**: Handles saving, loading, and refreshing tokens.
-- **Modular Codebase**: Utility functions for common tasks are separated for reusability and maintainability.
+- **PKCE Authentication Flow**: Implements the PKCE flow for secure authentication without requiring a client secret.
+- **MFA Support**: Requests and verifies Multi-Factor Authentication codes via email.
+- **Token Management**: Handles saving, loading, and refreshing tokens securely.
+- **Vehicle Commands**: Provides endpoints to send requests such as locking/unlocking doors, starting the vehicle, and diagnostics.
+- **Utility Functions**: Modular codebase with reusable utility functions.
 
 ## Prerequisites
 - Node.js (v18 or later)
@@ -32,8 +31,11 @@ The original code for this project is based on [https://github.com/metheos/node-
 ```
 .
 ├── auth/
-│   ├── utils.js        # Utility functions for authentication
-│   └── app.js          # Main application file
+│   ├── app.js          # Main application file
+│   ├── commands.js     # Command definitions for vehicle interactions
+│   ├── config.js       # Configuration settings
+│   ├── sessions.js     # Session management for users
+│   └── utils.js        # Utility functions for authentication
 ├── package.json        # Dependencies and scripts
 └── README.md           # Documentation
 ```
@@ -67,9 +69,7 @@ The original code for this project is based on [https://github.com/metheos/node-
   ```json
   {
     "success": true,
-    "transaction": "transaction_id",
-    "csrf": "csrf_token",
-    "code_verifier": "code_verifier"
+    "message": "MFA request sent. Check your email."
   }
   ```
 
@@ -80,16 +80,14 @@ The original code for this project is based on [https://github.com/metheos/node-
   ```json
   {
     "email": "user@example.com",
-    "code": "123456",
-    "transaction": "transaction_id",
-    "csrf": "csrf_token",
-    "code_verifier": "code_verifier"
+    "code": "123456"
   }
   ```
 - **Response**:
   ```json
   {
-    "success": true
+    "success": true,
+    "message": "MFA completed, tokens saved."
   }
   ```
 
@@ -111,12 +109,36 @@ The original code for this project is based on [https://github.com/metheos/node-
   }
   ```
 
+### Vehicle Commands
+Commands include:
+- `start`
+- `cancelStart`
+- `lockDoor`
+- `unlockDoor`
+- `lockTrunk`
+- `unlockTrunk`
+- `location`
+- `alert`
+- `cancelAlert`
+- `diagnostics`
+
+All commands require the following parameters in the request body:
+```json
+{
+  "email": "user@example.com",
+  "vin": "vehicle_id",
+  "uuid": "device_uuid"
+}
+```
+
+## Notes on UUID
+Use a random version 4 UUID as the `deviceId` for vehicle interactions. This ensures uniqueness and compatibility with the OnStar service.
+
 ## Scripts
 - `npm start`: Starts the server.
 - `npm run dev`: Starts the server with hot-reloading for development.
 
 ## Dependencies
-
 - [Fastify](https://www.fastify.io/): Web framework.
 - [openid-client](https://github.com/panva/node-openid-client): OpenID Connect client.
 - [axios](https://github.com/axios/axios): HTTP client.
