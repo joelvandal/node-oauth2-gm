@@ -2,7 +2,7 @@
   "type": "module",
   "scripts": {
     "start": "node auth/app.js",
-    "dev": "nodemon auth/app.js",
+    "dev": "nodemon --ignore 'sessions/*' --ignore 'tokens/*' auth/app.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."
