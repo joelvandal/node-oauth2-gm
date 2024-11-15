@@ -67,7 +67,7 @@ app.post("/auth", async (req, res) => {
     var authResponse = await getRequest(authorizationUrl);
     
     // Extract CSRF token and transaction ID
-    var { csrfToken, transId } = extractTokens(authResponse);
+    let { csrfToken, transId } = extractTokens(authResponse);
     
     // Send user credentials to custom policy endpoint
     console.log("Sending GM login credentials");
@@ -86,7 +86,7 @@ app.post("/auth", async (req, res) => {
     const mfaResponse = await getRequest(mfaRequestUrl);
     
     // Extract CSRF token and transaction ID
-    var { csrfToken, transId } = extractTokens(mfaResponse);
+    ({ csrfToken, transId } = extractTokens(mfaResponse));
 
     console.log("Requesting MFA Code. Check your email!");
 
@@ -141,7 +141,7 @@ app.post("/mfa", async (req, res) => {
     verificationCode: code,
   };
   
-  var MFACodeResponse = await postRequest(postMFACodeURL, MFACodeData, csrf);
+  await postRequest(postMFACodeURL, MFACodeData, csrf);
 
   // Complete MFA process
   const postMFACodeRespURL = authConfig.endpoints.sendCredentialsUrl(transaction);
@@ -152,7 +152,7 @@ app.post("/mfa", async (req, res) => {
     request_type: "RESPONSE",
   };
   
-  var MFACodeResponse = await postRequest(postMFACodeRespURL, MFACodeDataResp, csrf);
+  await postRequest(postMFACodeRespURL, MFACodeDataResp, csrf);
 
   // Retrieve authorization code
   const authCodeRequestURL = authConfig.endpoints.confirmMfaUrl(csrf, transaction);
