@@ -1,7 +1,8 @@
 export const authConfig = {
-  userAgent: "myChevrolet/118 CFNetwork/1408.0.4 Darwin/22.5.0", 
+  userAgent: "myChevrolet/118 CFNetwork/1408.0.4 Darwin/22.5.0",
   pkce: {
-    scope: "https://gmb2cprod.onmicrosoft.com/3ff30506-d242-4bed-835b-422bf992622e/Test.Read openid profile offline_access",
+    scope:
+      "https://gmb2cprod.onmicrosoft.com/3ff30506-d242-4bed-835b-422bf992622e/Test.Read openid profile offline_access",
     code_challenge_method: "S256",
   },
   endpoints: {

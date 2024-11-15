@@ -7,7 +7,7 @@ export default [
     languageOptions: {
       globals: {
         ...globals.browser, // Includes browser globals
-        ...globals.node,    // Adds Node.js globals like `process`
+        ...globals.node, // Adds Node.js globals like `process`
       },
     },
   },

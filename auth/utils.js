@@ -17,10 +17,9 @@ export const axiosClient = axios.create({
   httpAgent: new HttpCookieAgent({ cookies: { jar } }),
   httpsAgent: new HttpsCookieAgent({ cookies: { jar } }),
   headers: {
-    "User-Agent": authConfig.userAgent
+    "User-Agent": authConfig.userAgent,
   },
 });
-
 
 /**
  * Ensure the tokens directory exists.
@@ -82,8 +81,7 @@ export const handleTokenValidation = async (email, vin, uuid, res) => {
     return { success: true, GMAPIToken };
   } else {
     console.log("No existing tokens found or were invalid.");
-    res.status(404).send({ success: false, error: "Tokens not found."
-});
+    res.status(404).send({ success: false, error: "Tokens not found." });
     return null; // Return null to indicate failure
   }
 };
@@ -91,7 +89,7 @@ export const handleTokenValidation = async (email, vin, uuid, res) => {
 export async function setupClient() {
   console.log("Doing auth discovery");
   const issuer = await Issuer.discover(
-    "https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/b2c_1a_seamless_mobile_signuporsignin/v2.0/.well-known/openid-configuration"
+    "https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/b2c_1a_seamless_mobile_signuporsignin/v2.0/.well-known/openid-configuration",
   );
 
   // Initialize the client without client_secret since PKCE doesn't require it
@@ -101,7 +99,6 @@ export async function setupClient() {
     response_types: ["code"],
     token_endpoint_auth_method: "none",
   });
-
 }
 
 //use the MS token to get a GM API Token
@@ -136,18 +133,20 @@ export async function getGMAPIToken(tokenSet, vin, uuid) {
     .catch((error) => {
       console.error("Error:", error.message);
     });
-  const expires_at = Math.floor(new Date() / 1000) + parseInt(responseObj.data.expires_in);
+  const expires_at =
+    Math.floor(new Date() / 1000) + parseInt(responseObj.data.expires_in);
   responseObj.data.expires_at = expires_at;
 
   console.log("Set GM Token expiration to ", expires_at);
   return responseObj.data;
 }
 
-
 export const validateInputs = (inputs, res) => {
   for (const [key, value] of Object.entries(inputs)) {
     if (!value) {
-      res.status(400).send({ success: false, error: `Missing required parameter: ${key}.` });
+      res
+        .status(400)
+        .send({ success: false, error: `Missing required parameter: ${key}.` });
       return false;
     }
   }
@@ -252,7 +251,11 @@ export async function getAccessToken(code, code_verifier) {
 
   try {
     // Exchange the authorization code and code verifier for an access token
-    const tokenSet = await client.callback("msauth.com.gm.myChevrolet://auth", { code }, { code_verifier });
+    const tokenSet = await client.callback(
+      "msauth.com.gm.myChevrolet://auth",
+      { code },
+      { code_verifier },
+    );
 
     // console.log("Access Token:", tokenSet.access_token);
     // console.log("ID Token:", tokenSet.id_token);
@@ -264,13 +267,12 @@ export async function getAccessToken(code, code_verifier) {
   }
 }
 
-
 export const setupRequest = async (email, vin, uuid, res) => {
   const api = await handleTokenValidation(email, vin, uuid, res);
   if (!api) return null;
 
   const GMAPIToken = api.GMAPIToken;
-  
+
   const config = {
     withCredentials: true,
     headers: {
@@ -279,24 +281,56 @@ export const setupRequest = async (email, vin, uuid, res) => {
       accept: "application/json",
     },
   };
-  
+
   return { config, GMAPIToken };
 };
-					
+
+export const getVehicles = async (postData, config) => {
+  const commandUrl = `https://na-mobile-api.gm.com/api/v1/account/vehicles`;
+
+  try {
+    const response = await axiosClient.get(commandUrl, {
+      params: postData,
+      ...config,
+    });
+
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error.response?.data || error.message || "An unknown error occurred",
+      statusCode: error.response?.status || 500,
+    };
+  }
+};
 
 export const processCommand = async (command, vin, postData, config) => {
   const commandUrl = `https://na-mobile-api.gm.com/api/v1/account/vehicles/${vin}/commands/${command}`;
   return await sendCommandAndWait(commandUrl, postData, config);
 };
-  
-export const sendCommandAndWait = async (commandUrl, postData, config, maxRetries = 10, delayMs = 10000) => {
+
+export const sendCommandAndWait = async (
+  commandUrl,
+  postData,
+  config,
+  maxRetries = 10,
+  delayMs = 10000,
+) => {
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   try {
     const response = await axiosClient.post(commandUrl, postData, config);
     const { commandResponse } = response.data;
 
-    if (commandResponse && commandResponse.url && commandResponse.status === 'inProgress') {
+    if (
+      commandResponse &&
+      commandResponse.url &&
+      commandResponse.status === "inProgress"
+    ) {
       console.log(`Follow-up URL detected: ${commandResponse.url}`);
       const updatedUrl = commandResponse.url;
 
@@ -310,8 +344,11 @@ export const sendCommandAndWait = async (commandUrl, postData, config, maxRetrie
         try {
           followUpResponse = await axiosClient.get(updatedUrl, config);
 
-          if (followUpResponse.data && followUpResponse.data.commandResponse.status !== 'inProgress') {
-            console.log('Follow-up completed:', followUpResponse.data);
+          if (
+            followUpResponse.data &&
+            followUpResponse.data.commandResponse.status !== "inProgress"
+          ) {
+            console.log("Follow-up completed:", followUpResponse.data);
             return { success: true, data: followUpResponse.data };
           }
           console.log(`Status still inProgress:`, followUpResponse.data);
@@ -324,14 +361,17 @@ export const sendCommandAndWait = async (commandUrl, postData, config, maxRetrie
         }
       }
 
-      console.log('Maximum retries reached. Status still inProgress.');
-      return { success: false, error: "Request timeout: Status remained inProgress." };
+      console.log("Maximum retries reached. Status still inProgress.");
+      return {
+        success: false,
+        error: "Request timeout: Status remained inProgress.",
+      };
     } else {
-      console.log('Initial command response is final.');
+      console.log("Initial command response is final.");
       return { success: true, data: response.data };
     }
   } catch (error) {
-    console.error('Error sending command:', error);
+    console.error("Error sending command:", error);
     return { success: false, error: "Diagnostics request failed." };
   }
 };

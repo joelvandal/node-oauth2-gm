@@ -39,7 +39,7 @@ This repository contains an unofficial Node.js library designed to facilitate in
    cp .env.example .env
    ```
 
-   *Example **`.env`** file content:*
+   _Example **`.env`** file content:_
 
    ```env
    API_TOKEN=my_secure_api_token
@@ -140,6 +140,41 @@ This repository contains an unofficial Node.js library designed to facilitate in
   }
   ```
 
+### `/vehicles`
+
+- **Method**: `POST`
+- **Description**: Retrieves the list of vehicles linked to the user's account.
+- **Request Body**:
+  ```json
+  {
+    "email": "user@example.com",
+    "uuid": "device_uuid"
+  }
+  ```
+- **Response**:
+
+  ```json
+  {
+    "success": true,
+    "data": {
+      "vehicles": [
+        { "vin": "1234567890ABCDEF", "make": "Chevrolet", "model": "Malibu" },
+        { "vin": "0987654321FEDCBA", "make": "GMC", "model": "Terrain" }
+      ]
+    }
+  }
+  ```
+
+  In case of an error:
+
+  ```json
+  {
+    "success": false,
+    "error": "Unauthorized",
+    "statusCode": 401
+  }
+  ```
+
 ### Vehicle Commands
 
 Commands include:
@@ -191,5 +226,4 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 ## Contact
 
-For any inquiries or support, please reach out at [joel@vandal.ca](mailto\:joel@vandal.ca).
-
+For any inquiries or support, please reach out at [joel@vandal.ca](mailto:joel@vandal.ca).
