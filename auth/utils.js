@@ -254,8 +254,8 @@ export async function getAccessToken(code, code_verifier) {
     // Exchange the authorization code and code verifier for an access token
     const tokenSet = await client.callback("msauth.com.gm.myChevrolet://auth", { code }, { code_verifier });
 
-    console.log("Access Token:", tokenSet.access_token);
-    console.log("ID Token:", tokenSet.id_token);
+    // console.log("Access Token:", tokenSet.access_token);
+    // console.log("ID Token:", tokenSet.id_token);
 
     return tokenSet;
   } catch (err) {
