@@ -1,5 +1,9 @@
 import FastAPI from "fastify";
 
+import { 
+  authConfig 
+} from "./config.js";
+
 import {
   commands
 } from "./commands.js";
@@ -12,20 +16,27 @@ import {
 } from "./sessions.js";
 
 import {
+  validateInputs,
+  extractTokens,
   setupRequest,
   processCommand,
-  handleTokenValidation,
+  ensureTokensDir,
   saveTokens,
-  loadAccessToken,
   setupClient,
   postRequest,
   getRequest,
+  getRegexMatch,
   captureRedirectLocation,
   getAccessToken,
 } from "./utils.js";
 
+import { generators } from "openid-client";
+
 const app = FastAPI();
 const port = 3000;
+
+await ensureTokensDir();
+await ensureSessionsDir();
 
 /**
  * Endpoint to handle authentication and initiate PKCE flow
@@ -34,67 +45,70 @@ app.post("/auth", async (req, res) => {
   const { email, password } = req.body;
 
   // Validate input
-  if (!email || !password) {
-    res.status(400).send({ success: false, error: "Missing required parameters." });
-    return;
-  }
+  if (!validateInputs({ email, password }, res)) return;
 
-  console.log("Starting PKCE auth");
-  const client = await setupClient();
+  try {
+    console.log("Starting PKCE auth");
+    console.log("Starting PKCE auth");
+    const client = await setupClient();
+    
+    const { scope, code_challenge_method } = authConfig.pkce;
+    
+    // Generate the code verifier and code challenge for PKCE
+    const code_verifier = generators.codeVerifier();
+    const code_challenge = generators.codeChallenge(code_verifier);
+    
+    // Generate the authorization URL with the code challenge for PKCE
+    const authorizationUrl = client.authorizationUrl({ scope, code_challenge, code_challenge_method });
+    
+    console.log("got PKCE code verifier:", code_verifier);
+    
+    //Follow authentication url
+    var authResponse = await getRequest(authorizationUrl);
+    
+    // Extract CSRF token and transaction ID
+    var { csrfToken, transId } = extractTokens(authResponse);
+    
+    // Send user credentials to custom policy endpoint
+    console.log("Sending GM login credentials");
+    
+    const sendCredentialsUrl = authConfig.endpoints.sendCredentialsUrl(transId);
+    const credentialsData = {
+      request_type: "RESPONSE",
+      logonIdentifier: email,
+      password,
+    };
+    
+    await postRequest(sendCredentialsUrl, credentialsData, csrfToken);
+    
+    // Request the MFA page
+    const mfaRequestUrl = authConfig.endpoints.mfaRequestUrl(csrfToken, transId);
+    const mfaResponse = await getRequest(mfaRequestUrl);
+    
+    // Extract CSRF token and transaction ID
+    var { csrfToken, transId } = extractTokens(mfaResponse);
 
-  // Generate the code verifier and code challenge for PKCE
-  const code_verifier = generators.codeVerifier();
-  const code_challenge = generators.codeChallenge(code_verifier);
+    console.log("Requesting MFA Code. Check your email!");
 
-  // Generate the authorization URL with the code challenge for PKCE
-  const authorizationUrl = client.authorizationUrl({
-    scope: "https://gmb2cprod.onmicrosoft.com/3ff30506-d242-4bed-835b-422bf992622e/Test.Read openid profile offline_access",
-    code_challenge,
-    code_challenge_method: "S256",
-  });
+    const mfaConfirmUrl = authConfig.endpoints.sendMfaCodeUrl(transId);
+    const confirmData = {
+      emailMfa: email
+    };
 
-  console.log("got PKCE code verifier:", code_verifier);
-
-  //Follow authentication url
-  var authResponse = await getRequest(authorizationUrl);
-
-  // Extract CSRF token and transaction ID
-  var csrfToken = getRegexMatch(authResponse.data, `\"csrf\":\"(.*?)\"`);
-  var transId = getRegexMatch(authResponse.data, `\"transId\":\"(.*?)\"`);
-
-  // Send user credentials to custom policy endpoint
-  console.log("Sending GM login credentials");
-  const cpe1Url = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted?tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  
-  const cpe1Data = {
-    request_type: "RESPONSE",
-    logonIdentifier: email,
-    password: password,
-  };
-  var cpe1Response = await postRequest(cpe1Url, cpe1Data, csrfToken);
-
-  // Request the MFA page
-  const mfaRequestURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/api/CombinedSigninAndSignup/confirmed?rememberMe=true&csrf_token=${csrfToken}&tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  var authResponse = await getRequest(mfaRequestURL);
-  
-  // Extract updated CSRF token and transaction ID for MFA
-  var csrfToken = getRegexMatch(authResponse.data, `\"csrf\":\"(.*?)\"`);
-  var transId = getRegexMatch(authResponse.data, `\"transId\":\"(.*?)\"`);
-
-  // Request MFA code
-  console.log("Requesting MFA Code. Check your email!");
-  const cpe2Url = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl-RO/SendCode?tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  const cpe2Data = {
-    emailMfa: email
-  };
-  
-  var cpe2Response = await postRequest(cpe2Url, cpe2Data, csrfToken);
-  // console.dir(cpe2Response)
-
- // Save session data
-  await writeSession(email, { transaction: transId, csrf: csrfToken, code_verifier: code_verifier });
-
-  res.send({ success: true, message: "MFA request sent. Check your email." });
+    await postRequest(mfaConfirmUrl, confirmData, csrfToken);
+    
+    // Save session data
+    await writeSession(email, {
+      transaction: transId,
+      csrf: csrfToken,
+      code_verifier,
+    });   
+    
+    res.send({ success: true, message: "MFA request sent. Check your email." });
+  } catch (error) {
+    console.error("Error during PKCE auth:", error);
+    res.status(500).send({ success: false, error: "PKCE authentication failed." });
+  }    
   
 });
 
@@ -106,10 +120,7 @@ app.post("/mfa", async (req, res) => {
   const { email, code } = req.body;
 
   // Validate input
-  if (!email || !code) {
-    res.status(400).send({ success: false, error: "Missing required parameters." });
-    return;
-  }
+  if (!validateInputs({ email, code }, res)) return;
 
   // Load session data
   const sessionData = await readSession(email);
@@ -123,8 +134,8 @@ app.post("/mfa", async (req, res) => {
 
   // Submit MFA code
   console.log("Submitting MFA Code.");
-  const postMFACodeURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl-RO/VerifyCode?tx=${transaction}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  // console.log(postMFACodeURL);
+  
+  const postMFACodeURL = authConfig.endpoints.sendMfaVerifyUrl(transaction);
   const MFACodeData = {
     emailMfa: email,
     verificationCode: code,
@@ -133,8 +144,7 @@ app.post("/mfa", async (req, res) => {
   var MFACodeResponse = await postRequest(postMFACodeURL, MFACodeData, csrf);
 
   // Complete MFA process
-  const postMFACodeRespURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted?tx=${transaction}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  // console.log(postMFACodeRespURL);
+  const postMFACodeRespURL = authConfig.endpoints.sendCredentialsUrl(transaction);
   
   const MFACodeDataResp = {
     emailMfa: email,
@@ -145,17 +155,15 @@ app.post("/mfa", async (req, res) => {
   var MFACodeResponse = await postRequest(postMFACodeRespURL, MFACodeDataResp, csrf);
 
   // Retrieve authorization code
-  const authCodeRequestURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/api/SelfAsserted/confirmed?csrf_token=${csrf}&tx=${transaction}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  
+  const authCodeRequestURL = authConfig.endpoints.confirmMfaUrl(csrf, transaction);
+   
   // Get auth Code request url
   var authResponse = await captureRedirectLocation(authCodeRequestURL);
   
   var authCode = getRegexMatch(authResponse, `code=(.*)`);
-  // console.log("Auth Code:", authCode);
 
   // Exchange authorization code for tokens
   var thisTokenSet = await getAccessToken(authCode, code_verifier);
-  // console.log(thisTokenSet);
 
   console.log("Saving MS tokens for ", email);
   saveTokens(email, thisTokenSet);
@@ -166,8 +174,11 @@ app.post("/mfa", async (req, res) => {
   res.send({ success: true, message: "MFA completed, tokens saved." });
 
 });
+ 
 
-
+/**
+ * Dynamically generate all routes for commands
+ */
 Object.keys(commands).forEach((command) => {
   app.post(`/${command}`, async (req, res) => {
     const { email, vin, uuid } = req.body;

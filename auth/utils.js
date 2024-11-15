@@ -1,25 +1,51 @@
+import { authConfig } from "./config.js";
 import axios from "axios";
 import { CookieJar } from "tough-cookie";
 import { HttpCookieAgent, HttpsCookieAgent } from "http-cookie-agent/http";
-import fs from "fs";
+import fs from "fs/promises";
+import path from "path";
 import * as openidClient from "openid-client";
+import crypto from "crypto";
 
 const { Issuer, generators } = openidClient;
 
 const jar = new CookieJar();
 
+const TOKENS_DIR = path.resolve("tokens");
+
 export const axiosClient = axios.create({
   httpAgent: new HttpCookieAgent({ cookies: { jar } }),
   httpsAgent: new HttpsCookieAgent({ cookies: { jar } }),
+  headers: {
+    "User-Agent": authConfig.userAgent
+  },
 });
 
+
+/**
+ * Ensure the tokens directory exists.
+ */
+export async function ensureTokensDir() {
+  try {
+    await fs.mkdir(TOKENS_DIR, { recursive: true });
+  } catch (err) {
+    console.error("Error creating sessions directory:", err);
+    throw err;
+  }
+}
+
+function getTokenFilePath(email) {
+  const safeEmail = crypto.createHash("sha256").update(email).digest("hex");
+  return path.join(TOKENS_DIR, `${safeEmail}.json`);
+}
+
 export async function saveTokens(email, tokens) {
-  const tokenPath = `./${email}-token.json`;
-  fs.writeFileSync(tokenPath, JSON.stringify(tokens));
+  const tokenPath = getTokenFilePath(email);
+  await fs.writeFile(tokenPath, JSON.stringify(tokens));
 }
 
 export async function loadAccessToken(email) {
-  const tokenPath = `./${email}-token.json`;
+  const tokenPath = getTokenFilePath(email);
   const client = await setupClient();
   
   if (fs.existsSync(tokenPath)) {
@@ -109,8 +135,26 @@ export async function getGMAPIToken(tokenSet, vin, uuid) {
   return responseObj.data;
 }
 
+
+export const validateInputs = (inputs, res) => {
+  for (const [key, value] of Object.entries(inputs)) {
+    if (!value) {
+      res.status(400).send({ success: false, error: `Missing required parameter: ${key}.` });
+      return false;
+    }
+  }
+  return true;
+};
+
+export const extractTokens = (authResponse, regex) => {
+  return {
+    csrfToken: getRegexMatch(authResponse.data, `\"csrf\":\"(.*?)\"`),
+    transId: getRegexMatch(authResponse.data, `\"transId\":\"(.*?)\"`),
+  };
+};
+
 //little function to make grabbing a regex match simple
-function getRegexMatch(haystack, regexString) {
+export function getRegexMatch(haystack, regexString) {
   let re = new RegExp(regexString);
   let r = haystack.match(re);
   if (r) {

@@ -1,4 +1,5 @@
-tokens.json
+sessions
+tokens
 package-lock.json
 node_modules
 .env
