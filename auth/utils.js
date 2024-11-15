@@ -7,7 +7,7 @@ import path from "path";
 import * as openidClient from "openid-client";
 import crypto from "crypto";
 
-const { Issuer, generators } = openidClient;
+const { Issuer } = openidClient;
 
 const jar = new CookieJar();
 
@@ -47,20 +47,28 @@ export async function saveTokens(email, tokens) {
 export async function loadAccessToken(email) {
   const tokenPath = getTokenFilePath(email);
   const client = await setupClient();
-  
-  if (fs.existsSync(tokenPath)) {
-    const storedTokens = JSON.parse(fs.readFileSync(tokenPath));
+
+  try {
+    // Check if the file exists asynchronously
+    await fs.access(tokenPath);
+    const storedTokens = JSON.parse(await fs.readFile(tokenPath, "utf-8"));
     const now = Math.floor(Date.now() / 1000);
+
     if (storedTokens.expires_at > now) {
       return storedTokens;
     } else if (storedTokens.refresh_token) {
       const tokenSet = await client.refresh(storedTokens.refresh_token);
-      saveTokens(email, tokenSet);
-      return tokenSet
+      await saveTokens(email, tokenSet);
+      return tokenSet;
+    }
+  } catch (err) {
+    // If file doesn't exist or another error occurs
+    if (err.code !== "ENOENT") {
+      console.error("Error accessing token file:", err);
     }
   }
-  return false;
 
+  return false;
 }
 
 export const handleTokenValidation = async (email, vin, uuid, res) => {
@@ -146,10 +154,10 @@ export const validateInputs = (inputs, res) => {
   return true;
 };
 
-export const extractTokens = (authResponse, regex) => {
+export const extractTokens = (authResponse) => {
   return {
-    csrfToken: getRegexMatch(authResponse.data, `\"csrf\":\"(.*?)\"`),
-    transId: getRegexMatch(authResponse.data, `\"transId\":\"(.*?)\"`),
+    csrfToken: getRegexMatch(authResponse.data, `"csrf":"(.*?)"`),
+    transId: getRegexMatch(authResponse.data, `"transId":"(.*?)"`),
   };
 };
 
