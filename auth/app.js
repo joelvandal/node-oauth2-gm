@@ -1,3 +1,4 @@
+import "dotenv/config";
 import FastAPI from "fastify";
 
 import { 
@@ -33,10 +34,29 @@ import {
 import { generators } from "openid-client";
 
 const app = FastAPI();
-const port = 3000;
+const host = process.env.HOST || "localhost";
+const port = process.env.PORT || 3000;
 
 await ensureTokensDir();
 await ensureSessionsDir();
+
+/**
+ * Endpoint authentifcation
+ */ 
+app.addHook("onRequest", async (req, res) => {
+  const apiToken = process.env.API_TOKEN;
+
+  // Skip verification if API_TOKEN is not defined or empty
+  if (!apiToken) {
+    return;
+  }
+
+  const token = req.headers.authorization;
+
+  if (token !== `Bearer ${apiToken}`) {
+    res.status(401).send({ success: false, error: "Unauthorized" });
+  }
+});
 
 /**
  * Endpoint to handle authentication and initiate PKCE flow
@@ -215,8 +235,8 @@ Object.keys(commands).forEach((command) => {
  */
 const startServer = async () => {
   try {
-    await app.listen({ port, host: "0.0.0.0" });
-    console.log(`Server running on http://0.0.0.0:${port}`);
+    await app.listen({ port, host });
+    console.log(`Server running on http://${host}:${port}`);
   } catch (err) {
     console.error("Error starting server:", err);
     process.exit(1);
