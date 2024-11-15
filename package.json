@@ -2,7 +2,10 @@
   "type": "module",
   "scripts": {
     "start": "node auth/app.js",
-    "dev": "nodemon auth/app.js"
+    "dev": "nodemon auth/app.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "axios": "^1.7.7",
@@ -13,6 +16,13 @@
     "tough-cookie": "^5.0.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "@eslint/js": "^9.14.0",
+    "eslint": "^9.14.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-node": "^11.1.0",
+    "globals": "^15.12.0",
+    "nodemon": "^2.0.22",
+    "prettier": "^3.3.3"
   }
 }

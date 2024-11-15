@@ -1,6 +1,20 @@
 import FastAPI from "fastify";
 
 import {
+  commands
+} from "./commands.js";
+
+import {
+  ensureSessionsDir,
+  readSession,
+  writeSession,
+  deleteSession,
+} from "./sessions.js";
+
+import {
+  setupRequest,
+  processCommand,
+  handleTokenValidation,
   saveTokens,
   loadAccessToken,
   setupClient,
@@ -8,15 +22,18 @@ import {
   getRequest,
   captureRedirectLocation,
   getAccessToken,
-  getGMAPIToken
 } from "./utils.js";
 
 const app = FastAPI();
 const port = 3000;
 
+/**
+ * Endpoint to handle authentication and initiate PKCE flow
+ */
 app.post("/auth", async (req, res) => {
   const { email, password } = req.body;
 
+  // Validate input
   if (!email || !password) {
     res.status(400).send({ success: false, error: "Missing required parameters." });
     return;
@@ -41,16 +58,13 @@ app.post("/auth", async (req, res) => {
   //Follow authentication url
   var authResponse = await getRequest(authorizationUrl);
 
-  //get correlation id
+  // Extract CSRF token and transaction ID
   var csrfToken = getRegexMatch(authResponse.data, `\"csrf\":\"(.*?)\"`);
-  
-  //get transId/stateproperties
   var transId = getRegexMatch(authResponse.data, `\"transId\":\"(.*?)\"`);
 
-  //send credentials to custom policy endpoint
+  // Send user credentials to custom policy endpoint
   console.log("Sending GM login credentials");
   const cpe1Url = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted?tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  // console.log(cpe1Url);
   
   const cpe1Data = {
     request_type: "RESPONSE",
@@ -59,19 +73,15 @@ app.post("/auth", async (req, res) => {
   };
   var cpe1Response = await postRequest(cpe1Url, cpe1Data, csrfToken);
 
-  //load the page that lets us request the MFA Code
+  // Request the MFA page
   const mfaRequestURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/api/CombinedSigninAndSignup/confirmed?rememberMe=true&csrf_token=${csrfToken}&tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
-  
-  //Get MFA request url
   var authResponse = await getRequest(mfaRequestURL);
   
-  //get csrf
+  // Extract updated CSRF token and transaction ID for MFA
   var csrfToken = getRegexMatch(authResponse.data, `\"csrf\":\"(.*?)\"`);
-  
-  //get transId/stateproperties
   var transId = getRegexMatch(authResponse.data, `\"transId\":\"(.*?)\"`);
 
-  // request mfa code
+  // Request MFA code
   console.log("Requesting MFA Code. Check your email!");
   const cpe2Url = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl-RO/SendCode?tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
   const cpe2Data = {
@@ -81,20 +91,37 @@ app.post("/auth", async (req, res) => {
   var cpe2Response = await postRequest(cpe2Url, cpe2Data, csrfToken);
   // console.dir(cpe2Response)
 
-  res.send({ success: true, transaction: transId, csrf: csrfToken, code_verifier: code_verifier });
+ // Save session data
+  await writeSession(email, { transaction: transId, csrf: csrfToken, code_verifier: code_verifier });
+
+  res.send({ success: true, message: "MFA request sent. Check your email." });
   
 });
-  
+
+/**
+ * Endpoint to handle MFA verification and complete authentication
+ */  
 app.post("/mfa", async (req, res) => {
 
-  const { email, code, transaction, csrf, code_verifier } = req.body;
+  const { email, code } = req.body;
 
-  if (!code) {
+  // Validate input
+  if (!email || !code) {
     res.status(400).send({ success: false, error: "Missing required parameters." });
     return;
   }
 
-  //submit MFA code
+  // Load session data
+  const sessionData = await readSession(email);
+
+  if (!sessionData) {
+    res.status(404).send({ success: false, error: "Session not found." });
+    return;
+  }
+
+  const { transaction, csrf, code_verifier } = sessionData;
+
+  // Submit MFA code
   console.log("Submitting MFA Code.");
   const postMFACodeURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl-RO/VerifyCode?tx=${transaction}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
   // console.log(postMFACodeURL);
@@ -105,7 +132,7 @@ app.post("/mfa", async (req, res) => {
   
   var MFACodeResponse = await postRequest(postMFACodeURL, MFACodeData, csrf);
 
-  //RESPONSE - not sure what this does, but we need to do it to move on
+  // Complete MFA process
   const postMFACodeRespURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted?tx=${transaction}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
   // console.log(postMFACodeRespURL);
   
@@ -117,49 +144,64 @@ app.post("/mfa", async (req, res) => {
   
   var MFACodeResponse = await postRequest(postMFACodeRespURL, MFACodeDataResp, csrf);
 
-  //Get Auth Code in redirect (This actually contains the 'code' for completing PKCE in the oauth flow)
+  // Retrieve authorization code
   const authCodeRequestURL = `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/api/SelfAsserted/confirmed?csrf_token=${csrf}&tx=${transaction}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`;
   
-  //Get auth Code request url
+  // Get auth Code request url
   var authResponse = await captureRedirectLocation(authCodeRequestURL);
   
   var authCode = getRegexMatch(authResponse, `code=(.*)`);
   // console.log("Auth Code:", authCode);
 
-  //use code with verifier to get MS access token!
+  // Exchange authorization code for tokens
   var thisTokenSet = await getAccessToken(authCode, code_verifier);
   // console.log(thisTokenSet);
 
   console.log("Saving MS tokens for ", email);
   saveTokens(email, thisTokenSet);
 
+  // Delete session data
+  await deleteSession(email);
+
+  res.send({ success: true, message: "MFA completed, tokens saved." });
+
+});
+
+
+Object.keys(commands).forEach((command) => {
+  app.post(`/${command}`, async (req, res) => {
+    const { email, vin, uuid } = req.body;
+
+    // Validate required parameters
+    if (!email || !vin || !uuid) {
+      res.status(400).send({ success: false, error: "Missing required parameters." });
+      return;
+    }
+
+    // Prepare the request
+    const requestSetup = await setupRequest(email, vin, uuid, res);
+    if (!requestSetup) return; // Error handled in setupRequest
+
+    const { config } = requestSetup;
+
+    // Get specific postData for the command, if available
+    const postData = commands[command].postData || {};
+
+    // Process the command
+    const result = await processCommand(command, vin, postData, config);
+
+    if (result.success) {
+      res.send(result); // Successfully processed
+    } else {
+      res.status(408).send(result); // Timeout or error
+    }
+  });
 });
   
 
-app.post("/start", async (req, res) => {
-  const { email, vin, uuid } = req.body;
-
-  if (!email || !vin || !uuid) {
-    res.status(400).send({ success: false, error: "Missing required parameters." });
-    return;
-  }
-
-  //Try to load a saved token set
-  const loadedTokenSet = await loadAccessToken(email);
-  
-  if (loadedTokenSet !== false) {
-    //we already have our MS tokens, let's use them to get the access token for the GM API!
-    // console.log(loadedTokenSet);
-    
-    console.log("Existing tokens loaded!");
-    const GMAPIToken = await getGMAPIToken(loadedTokenSet, vin, uuid);
-    // console.log(GMAPIToken);
-  } else {
-    console.log("No existing tokens found or were invalid.");
-    return false;
-  }
-});
-
+/**
+ * Start the server and listen for requests
+ */
 const startServer = async () => {
   try {
     await app.listen({ port, host: "0.0.0.0" });

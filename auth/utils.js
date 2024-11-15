@@ -8,7 +8,7 @@ const { Issuer, generators } = openidClient;
 
 const jar = new CookieJar();
 
-const axiosClient = axios.create({
+export const axiosClient = axios.create({
   httpAgent: new HttpCookieAgent({ cookies: { jar } }),
   httpsAgent: new HttpsCookieAgent({ cookies: { jar } }),
 });
@@ -36,6 +36,23 @@ export async function loadAccessToken(email) {
   return false;
 
 }
+
+export const handleTokenValidation = async (email, vin, uuid, res) => {
+  // Load existing tokens
+  const loadedTokenSet = await loadAccessToken(email);
+
+  if (loadedTokenSet !== false) {
+    console.log("Existing tokens loaded!");
+    const GMAPIToken = await getGMAPIToken(loadedTokenSet, vin, uuid);
+    // Respond with success and token data
+    return { success: true, GMAPIToken };
+  } else {
+    console.log("No existing tokens found or were invalid.");
+    res.status(404).send({ success: false, error: "Tokens not found."
+});
+    return null; // Return null to indicate failure
+  }
+};
 
 export async function setupClient() {
   console.log("Doing auth discovery");
@@ -195,3 +212,74 @@ export async function getAccessToken(code, code_verifier) {
   }
 }
 
+
+export const setupRequest = async (email, vin, uuid, res) => {
+  const api = await handleTokenValidation(email, vin, uuid, res);
+  if (!api) return null;
+
+  const GMAPIToken = api.GMAPIToken;
+  
+  const config = {
+    withCredentials: true,
+    headers: {
+      authorization: `bearer ${GMAPIToken.access_token}`,
+      "content-type": "application/json; charset=UTF-8",
+      accept: "application/json",
+    },
+  };
+  
+  return { config, GMAPIToken };
+};
+					
+
+export const processCommand = async (command, vin, postData, config) => {
+  const commandUrl = `https://na-mobile-api.gm.com/api/v1/account/vehicles/${vin}/commands/${command}`;
+  return await sendCommandAndWait(commandUrl, postData, config);
+};
+  
+export const sendCommandAndWait = async (commandUrl, postData, config, maxRetries = 10, delayMs = 10000) => {
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  try {
+    const response = await axiosClient.post(commandUrl, postData, config);
+    const { commandResponse } = response.data;
+
+    if (commandResponse && commandResponse.url && commandResponse.status === 'inProgress') {
+      console.log(`Follow-up URL detected: ${commandResponse.url}`);
+      const updatedUrl = commandResponse.url;
+
+      let followUpResponse = null;
+      let attempt = 0;
+
+      while (attempt < maxRetries) {
+        attempt++;
+        console.log(`Attempt ${attempt}: Checking status...`);
+
+        try {
+          followUpResponse = await axiosClient.get(updatedUrl, config);
+
+          if (followUpResponse.data && followUpResponse.data.commandResponse.status !== 'inProgress') {
+            console.log('Follow-up completed:', followUpResponse.data);
+            return { success: true, data: followUpResponse.data };
+          }
+          console.log(`Status still inProgress:`, followUpResponse.data);
+        } catch (error) {
+          console.error(`Error during follow-up attempt ${attempt}:`, error);
+        }
+
+        if (attempt < maxRetries) {
+          await delay(delayMs);
+        }
+      }
+
+      console.log('Maximum retries reached. Status still inProgress.');
+      return { success: false, error: "Request timeout: Status remained inProgress." };
+    } else {
+      console.log('Initial command response is final.');
+      return { success: true, data: response.data };
+    }
+  } catch (error) {
+    console.error('Error sending command:', error);
+    return { success: false, error: "Diagnostics request failed." };
+  }
+};
