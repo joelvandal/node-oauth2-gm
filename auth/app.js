@@ -219,7 +219,12 @@ app.post("/vehicles", async (req, res) => {
   const { config } = requestSetup;
 
   // Get specific postData for the command, if available
-  const postData = {};
+  const postData = {
+    includeCommands: true,
+    includeEntitlements: true,
+    includeModules: true,
+    includeSharedVehicles: true
+  };
 
   // Process the command
   const result = await getVehicles(postData, config);
