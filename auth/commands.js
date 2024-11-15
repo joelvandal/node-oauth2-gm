@@ -1,6 +1,6 @@
 export const commands = {
   start: {},
-  stop: {},
+  cancelStart: {},
   lockDoor: {},
   unlockDoor: {},
   lockTrunk: {},
