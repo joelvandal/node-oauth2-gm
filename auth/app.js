@@ -108,7 +108,13 @@ app.post("/auth", async (req, res) => {
       transId,
     );
     const mfaResponse = await getRequest(mfaRequestUrl);
-
+    if (typeof mfaResponse === 'undefined') {
+      res
+        .status(302)
+        .send({ success: false, error: "Invalid username and/or password." });
+	return;
+    }
+    
     // Extract CSRF token and transaction ID
     ({ csrfToken, transId } = extractTokens(mfaResponse));
 

@@ -17,5 +17,10 @@ export const authConfig = {
       `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/api/SelfAsserted/confirmed?csrf_token=${csrfToken}&tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`,
     sendMfaCodeUrl: (transId) =>
       `https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl-RO/SendCode?tx=${transId}&p=B2C_1A_SEAMLESS_MOBILE_SignUpOrSignIn`,
+    openIdConfig: "https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/b2c_1a_seamless_mobile_signuporsignin/v2.0/.well-known/openid-configuration",
+    gmApiTokenUrl: "https://na-mobile-api.gm.com/sec/authz/v3/oauth/token",
+    vehiclesUrl: "https://na-mobile-api.gm.com/api/v1/account/vehicles",
+    commandUrl: (vin, command) =>
+      `https://na-mobile-api.gm.com/api/v1/account/vehicles/${vin}/commands/${command}`,
   },
 };

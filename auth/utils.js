@@ -88,9 +88,7 @@ export const handleTokenValidation = async (email, vin, uuid, res) => {
 
 export async function setupClient() {
   console.log("Doing auth discovery");
-  const issuer = await Issuer.discover(
-    "https://custlogin.gm.com/gmb2cprod.onmicrosoft.com/b2c_1a_seamless_mobile_signuporsignin/v2.0/.well-known/openid-configuration",
-  );
+  const issuer = await Issuer.discover(authConfig.endpoints.openIdConfig);
 
   // Initialize the client without client_secret since PKCE doesn't require it
   return new issuer.Client({
@@ -105,7 +103,7 @@ export async function setupClient() {
 //these GM API tokens are only valid for 30 minutes
 export async function getGMAPIToken(tokenSet, vin, uuid) {
   console.log("Requesting GM API Token using MS Access Token");
-  const url = "https://na-mobile-api.gm.com/sec/authz/v3/oauth/token";
+  const url = authConfig.endpoints.gmApiTokenUrl;
   var responseObj;
   const postData = {
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -193,6 +191,7 @@ export async function postRequest(url, postData, csrfToken = "") {
       responseObj = response;
     })
     .catch((error) => {
+       console.dir(error);
       console.error("Error:", error.message);
     });
   return responseObj;
@@ -286,7 +285,7 @@ export const setupRequest = async (email, vin, uuid, res) => {
 };
 
 export const getVehicles = async (postData, config) => {
-  const commandUrl = `https://na-mobile-api.gm.com/api/v1/account/vehicles`;
+  const commandUrl = authConfig.endpoints.vehiclesUrl;
 
   try {
     const response = await axiosClient.get(commandUrl, {
@@ -309,7 +308,7 @@ export const getVehicles = async (postData, config) => {
 };
 
 export const processCommand = async (command, vin, postData, config) => {
-  const commandUrl = `https://na-mobile-api.gm.com/api/v1/account/vehicles/${vin}/commands/${command}`;
+  const commandUrl = authConfig.endpoints.commandUrl(vin, command);
   return await sendCommandAndWait(commandUrl, postData, config);
 };
 
@@ -351,7 +350,7 @@ export const sendCommandAndWait = async (
             console.log("Follow-up completed:", followUpResponse.data);
             return { success: true, data: followUpResponse.data };
           }
-          console.log(`Status still inProgress:`, followUpResponse.data);
+          // console.log(`Status still inProgress:`, followUpResponse.data);
         } catch (error) {
           console.error(`Error during follow-up attempt ${attempt}:`, error);
         }
