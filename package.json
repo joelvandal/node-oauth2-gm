@@ -51,5 +51,19 @@
   },
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "funding": [
+    {
+      "type": "buymeacoffee",
+      "url": "https://buymeacoffee.com/jvandal"
+    },
+    {
+      "type": "paypal",
+      "url": "https://paypal.me/joelvandal"
+    },
+    {
+      "type": "interac",
+      "url": "mailto:joel@vandal.ca"
+    }
+  ]
 }
