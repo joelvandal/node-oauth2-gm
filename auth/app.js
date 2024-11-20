@@ -123,7 +123,7 @@ app.post("/auth", async (req, res) => {
     console.dir(mfaRequestUrl);
     const mfaResponse = await getRequest(email, mfaRequestUrl);
     if (typeof mfaResponse === "undefined") {
-      console.log(`Invalid username and/or password for ${email}"`);
+      console.log(`Invalid username and/or password for ${email}`);
       res
         .status(302)
         .send({ success: false, error: "Invalid username and/or password." });
