@@ -172,7 +172,7 @@ export async function postRequest(
   }
 
   console.log("Request URL:", url);
-  console.log("Encoded Data:", encodedData);
+  // console.log("Encoded Data:", encodedData);
 
   const headers = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
