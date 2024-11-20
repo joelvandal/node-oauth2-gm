@@ -6,68 +6,38 @@ import fs from "fs/promises";
 import path from "path";
 import * as openidClient from "openid-client";
 import crypto from "crypto";
+import qs from "qs";
+
+import { loadAccessToken } from "./tokens.js";
+
+import { loadCookieJar, saveCookieJar } from "./cookies.js";
 
 const { Issuer } = openidClient;
 
-const jar = new CookieJar();
+export async function createAxiosClient(email) {
+  const jar = await loadCookieJar(email);
 
-const TOKENS_DIR = path.resolve("tokens");
+  const axiosClient = axios.create({
+    httpAgent: new HttpCookieAgent({ cookies: { jar } }),
+    httpsAgent: new HttpsCookieAgent({ cookies: { jar } }),
+    headers: {
+      "User-Agent": authConfig.userAgent,
+    },
+  });
 
-export const axiosClient = axios.create({
-  httpAgent: new HttpCookieAgent({ cookies: { jar } }),
-  httpsAgent: new HttpsCookieAgent({ cookies: { jar } }),
-  headers: {
-    "User-Agent": authConfig.userAgent,
-  },
-});
+  // Save the cookie jar after each request
+  axiosClient.interceptors.response.use(
+    async (response) => {
+      await saveCookieJar(email, jar);
+      return response;
+    },
+    async (error) => {
+      await saveCookieJar(email, jar);
+      return Promise.reject(error);
+    },
+  );
 
-/**
- * Ensure the tokens directory exists.
- */
-export async function ensureTokensDir() {
-  try {
-    await fs.mkdir(TOKENS_DIR, { recursive: true });
-  } catch (err) {
-    console.error("Error creating sessions directory:", err);
-    throw err;
-  }
-}
-
-function getTokenFilePath(email) {
-  const safeEmail = crypto.createHash("sha256").update(email).digest("hex");
-  return path.join(TOKENS_DIR, `${safeEmail}.json`);
-}
-
-export async function saveTokens(email, tokens) {
-  const tokenPath = getTokenFilePath(email);
-  await fs.writeFile(tokenPath, JSON.stringify(tokens));
-}
-
-export async function loadAccessToken(email) {
-  const tokenPath = getTokenFilePath(email);
-  const client = await setupClient();
-
-  try {
-    // Check if the file exists asynchronously
-    await fs.access(tokenPath);
-    const storedTokens = JSON.parse(await fs.readFile(tokenPath, "utf-8"));
-    const now = Math.floor(Date.now() / 1000);
-
-    if (storedTokens.expires_at > now) {
-      return storedTokens;
-    } else if (storedTokens.refresh_token) {
-      const tokenSet = await client.refresh(storedTokens.refresh_token);
-      await saveTokens(email, tokenSet);
-      return tokenSet;
-    }
-  } catch (err) {
-    // If file doesn't exist or another error occurs
-    if (err.code !== "ENOENT") {
-      console.error("Error accessing token file:", err);
-    }
-  }
-
-  return false;
+  return axiosClient;
 }
 
 export const handleTokenValidation = async (email, vin, uuid, res) => {
@@ -76,7 +46,7 @@ export const handleTokenValidation = async (email, vin, uuid, res) => {
 
   if (loadedTokenSet !== false) {
     console.log("Existing tokens loaded!");
-    const GMAPIToken = await getGMAPIToken(loadedTokenSet, vin, uuid);
+    const GMAPIToken = await getGMAPIToken(email, loadedTokenSet, vin, uuid);
     // Respond with success and token data
     return { success: true, GMAPIToken };
   } else {
@@ -101,7 +71,10 @@ export async function setupClient() {
 
 //use the MS token to get a GM API Token
 //these GM API tokens are only valid for 30 minutes
-export async function getGMAPIToken(tokenSet, vin, uuid) {
+export async function getGMAPIToken(email, tokenSet, vin, uuid) {
+  // Create an Axios client specific to the user
+  const axiosClient = await createAxiosClient(email);
+
   console.log("Requesting GM API Token using MS Access Token");
   const url = authConfig.endpoints.gmApiTokenUrl;
   var responseObj;
@@ -170,35 +143,84 @@ export function getRegexMatch(haystack, regexString) {
 }
 
 //post request function for the MS oauth side of things
-export async function postRequest(url, postData, csrfToken = "") {
+export async function postRequest(
+  email,
+  url,
+  postData,
+  csrfToken = "",
+  referer = "",
+) {
+  let encodedData;
+
+  const axiosClient = await createAxiosClient(email);
+
+  if (typeof postData === "object") {
+    if (postData.strongAuthenticationPhoneNumber) {
+      encodedData = `&${qs.stringify(postData)}`;
+    } else {
+      encodedData = qs.stringify(postData);
+    }
+  } else if (typeof postData === "string") {
+    if (
+      postData.includes("strongAuthenticationPhoneNumber") &&
+      !postData.startsWith("&")
+    ) {
+      encodedData = `&${postData}`;
+    } else {
+      encodedData = postData;
+    }
+  }
+
+  console.log("Request URL:", url);
+  console.log("Encoded Data:", encodedData);
+
+  const headers = {
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    accept: "application/json, text/javascript, */*; q=0.01",
+    origin: "https://custlogin.gm.com",
+    "x-csrf-token": csrfToken,
+  };
+
+  if (referer) {
+    headers.referer = referer;
+  }
+
+  // console.log("Request Headers:", headers);
+
   var responseObj;
   await axiosClient
-    .post(url, postData, {
+    .post(url, encodedData, {
       withCredentials: true,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        accept: "application/json, text/javascript, */*; q=0.01",
-        origin: "https://custlogin.gm.com",
-        "x-csrf-token": csrfToken,
-      },
+      headers,
     })
     .then((response) => {
-      console.log("Response Status:", response.status);
-      // console.log("Response Status:", response.statusText);
-      // console.log("Response Headers:", response.headers);
-      // console.log("Response:", response.data);
-      // console.log(response.CookieJar.cookies);
+      //console.log("Response Status:", response.status);
+      //console.log("Response Headers:", response.headers);
+      //console.log("Response Data:", response.data);
+
+      // Axios does not expose cookies directly; use response.headers['set-cookie'] if available.
+      //console.log("Cookies from Response Headers:", response.headers["set-cookie"]);
+
       responseObj = response;
     })
     .catch((error) => {
-       console.dir(error);
-      console.error("Error:", error.message);
+      console.error("Error Message:", error.message);
+
+      if (error.response) {
+        console.error("Error Response Status:", error.response.status);
+        console.error("Error Response Headers:", error.response.headers);
+        console.error("Error Response Data:", error.response.data);
+      } else {
+        console.error("No response received, Error:", error);
+      }
     });
+
   return responseObj;
 }
 
 //general get request function with cookie support
-export async function getRequest(url) {
+export async function getRequest(email, url) {
+  const axiosClient = await createAxiosClient(email);
   var responseObj;
   await axiosClient
     .get(url, { withCredentials: true, maxRedirects: 0 })
@@ -216,7 +238,8 @@ export async function getRequest(url) {
 }
 
 //this helps grab the MS oauth pkce code response
-export async function captureRedirectLocation(url) {
+export async function captureRedirectLocation(email, url) {
+  const axiosClient = await createAxiosClient(email);
   console.log("Requesting PKCE code");
   var result = false;
   try {
@@ -267,6 +290,7 @@ export async function getAccessToken(code, code_verifier) {
 }
 
 export const setupRequest = async (email, vin, uuid, res) => {
+  const axiosClient = await createAxiosClient(email);
   const api = await handleTokenValidation(email, vin, uuid, res);
   if (!api) return null;
 
@@ -279,12 +303,14 @@ export const setupRequest = async (email, vin, uuid, res) => {
       "content-type": "application/json; charset=UTF-8",
       accept: "application/json",
     },
+    axiosClient,
   };
 
   return { config, GMAPIToken };
 };
 
-export const getVehicles = async (postData, config) => {
+export const getVehicles = async (email, postData, config) => {
+  const axiosClient = await createAxiosClient(email);
   const commandUrl = authConfig.endpoints.vehiclesUrl;
 
   try {
@@ -307,12 +333,13 @@ export const getVehicles = async (postData, config) => {
   }
 };
 
-export const processCommand = async (command, vin, postData, config) => {
+export const processCommand = async (email, command, vin, postData, config) => {
   const commandUrl = authConfig.endpoints.commandUrl(vin, command);
-  return await sendCommandAndWait(commandUrl, postData, config);
+  return await sendCommandAndWait(email, commandUrl, postData, config);
 };
 
 export const sendCommandAndWait = async (
+  email,
   commandUrl,
   postData,
   config,
@@ -320,6 +347,8 @@ export const sendCommandAndWait = async (
   delayMs = 10000,
 ) => {
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const axiosClient = await createAxiosClient(email); // User-specific Axios client
 
   try {
     const response = await axiosClient.post(commandUrl, postData, config);

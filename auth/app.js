@@ -13,12 +13,11 @@ import {
 } from "./sessions.js";
 
 import {
+  createAxiosClient,
   validateInputs,
   extractTokens,
   setupRequest,
   processCommand,
-  ensureTokensDir,
-  saveTokens,
   setupClient,
   getVehicles,
   postRequest,
@@ -28,17 +27,22 @@ import {
   getAccessToken,
 } from "./utils.js";
 
+import { ensureTokensDir, saveTokens } from "./tokens.js";
+
+import { ensureCookiesDir } from "./cookies.js";
+
 import { generators } from "openid-client";
 
 const app = FastAPI();
 const host = process.env.HOST || "localhost";
 const port = process.env.PORT || 3000;
 
+await ensureCookiesDir();
 await ensureTokensDir();
 await ensureSessionsDir();
 
 /**
- * Endpoint authentifcation
+ * Endpoint authentication
  */
 app.addHook("onRequest", async (req, res) => {
   const apiToken = process.env.API_TOKEN;
@@ -64,6 +68,12 @@ app.post("/auth", async (req, res) => {
   // Validate input
   if (!validateInputs({ email, password }, res)) return;
 
+  // Create an Axios client specific to the user
+  const axiosClient = await createAxiosClient(email);
+
+  // Delete session data
+  await deleteSession(email);
+
   try {
     console.log("Starting PKCE auth");
     console.log("Starting PKCE auth");
@@ -85,7 +95,7 @@ app.post("/auth", async (req, res) => {
     console.log("got PKCE code verifier:", code_verifier);
 
     //Follow authentication url
-    var authResponse = await getRequest(authorizationUrl);
+    const authResponse = await getRequest(email, authorizationUrl);
 
     // Extract CSRF token and transaction ID
     let { csrfToken, transId } = extractTokens(authResponse);
@@ -100,41 +110,118 @@ app.post("/auth", async (req, res) => {
       password,
     };
 
-    await postRequest(sendCredentialsUrl, credentialsData, csrfToken);
+    await postRequest(email, sendCredentialsUrl, credentialsData, csrfToken);
+
+    console.log("Retrieve CSRF and Transaction ID");
 
     // Request the MFA page
     const mfaRequestUrl = authConfig.endpoints.mfaRequestUrl(
       csrfToken,
       transId,
     );
-    const mfaResponse = await getRequest(mfaRequestUrl);
-    if (typeof mfaResponse === 'undefined') {
+
+    console.dir(mfaRequestUrl);
+    const mfaResponse = await getRequest(email, mfaRequestUrl);
+    if (typeof mfaResponse === "undefined") {
+      console.log(`Invalid username and/or password for ${email}"`);
       res
         .status(302)
         .send({ success: false, error: "Invalid username and/or password." });
-	return;
+      return;
     }
-    
+
     // Extract CSRF token and transaction ID
     ({ csrfToken, transId } = extractTokens(mfaResponse));
 
-    console.log("Requesting MFA Code. Check your email!");
+    const responseText = JSON.stringify(mfaResponse.data);
 
-    const mfaConfirmUrl = authConfig.endpoints.sendMfaCodeUrl(transId);
-    const confirmData = {
-      emailMfa: email,
-    };
+    const confirmData = {};
+    let verificationType = "";
+    let verificationMethod = "";
+    let verificationPhone = "";
+    if (responseText.includes("phoneVerificationControl")) {
+      verificationType = "phone";
+      verificationMethod = "phoneVerificationControl-readOnly";
+      const regex = /(XXXX-XXX-\d{4})/;
+      const match = responseText.match(regex);
+      if (match) {
+        verificationPhone = match[1];
+      } else {
+        res.status(302).send({
+          success: false,
+          error: "No phone number detected.",
+        });
+        return;
+      }
+      confirmData.strongAuthenticationPhoneNumber = verificationPhone;
 
-    await postRequest(mfaConfirmUrl, confirmData, csrfToken);
+      // TODO: Fix SMS authentication
+      res.status(302).send({
+        success: false,
+        error: "Unsupported authentication method.",
+      });
+      return;
+    } else if (responseText.includes("emailVerificationControl")) {
+      verificationType = "email";
+      verificationMethod = "emailVerificationControl-RO";
+      confirmData.emailMfa = email;
+    } else if (responseText.includes("otpCode")) {
+      verificationType = "otp";
+    } else {
+      res.status(302).send({
+        success: false,
+        error: "Unsupported authentication method.",
+      });
+      return;
+    }
+
+    if (verificationType != "otp") {
+      const mfaConfirmUrl = authConfig.endpoints.sendMfaCodeUrl(
+        verificationMethod,
+        transId,
+      );
+
+      const confirmResponse = await postRequest(
+        email,
+        mfaConfirmUrl,
+        confirmData,
+        csrfToken,
+        mfaRequestUrl,
+      );
+
+      if (typeof confirmResponse === "undefined") {
+        res.status(302).send({
+          success: false,
+          error:
+            "Verify your that you are using Phone or Email authentification.",
+        });
+        return;
+      }
+
+      console.log(confirmResponse.data);
+
+      if (confirmResponse.data.status != "200") {
+        res
+          .status(confirmResponse.data.status)
+          .send({ success: false, error: confirmResponse.data.message });
+        return;
+      }
+    }
 
     // Save session data
     await writeSession(email, {
       transaction: transId,
       csrf: csrfToken,
       code_verifier,
+      verificationType,
+      verificationPhone,
     });
 
-    res.send({ success: true, message: "MFA request sent. Check your email." });
+    console.log(`Requesting MFA Code. Check your ${verificationType} !`);
+    res.send({
+      success: true,
+      message: `MFA request sent. Check your ${verificationType}.`,
+    });
   } catch (error) {
     console.error("Error during PKCE auth:", error);
     res
@@ -160,30 +247,70 @@ app.post("/mfa", async (req, res) => {
     return;
   }
 
-  const { transaction, csrf, code_verifier } = sessionData;
+  const {
+    transaction,
+    csrf,
+    code_verifier,
+    verificationType,
+    verificationPhone,
+  } = sessionData;
 
   // Submit MFA code
   console.log("Submitting MFA Code.");
 
-  const postMFACodeURL = authConfig.endpoints.sendMfaVerifyUrl(transaction);
-  const MFACodeData = {
-    emailMfa: email,
-    verificationCode: code,
-  };
+  if (verificationType == "email") {
+    let verificationMethod = "emailVerificationControl-RO";
+    const postMFACodeURL = authConfig.endpoints.sendMfaVerifyUrl(
+      verificationMethod,
+      transaction,
+    );
 
-  await postRequest(postMFACodeURL, MFACodeData, csrf);
+    const MFACodeData = {
+      emailMfa: email,
+      verificationCode: code,
+    };
+
+    await postRequest(email, postMFACodeURL, MFACodeData, csrf);
+  }
+
+  if (verificationType == "phone") {
+    let verificationMethod = "phoneVerificationControl-readOnly";
+    const postMFACodeURL = authConfig.endpoints.sendMfaVerifyUrl(
+      verificationMethod,
+      transaction,
+    );
+
+    const MFACodeData = {
+      strongAuthenticationPhoneNumber: verificationPhone,
+      verificationCode: code,
+    };
+
+    await postRequest(email, postMFACodeURL, MFACodeData, csrf);
+  }
 
   // Complete MFA process
   const postMFACodeRespURL =
     authConfig.endpoints.sendCredentialsUrl(transaction);
 
   const MFACodeDataResp = {
-    emailMfa: email,
-    verificationCode: code,
     request_type: "RESPONSE",
   };
 
-  await postRequest(postMFACodeRespURL, MFACodeDataResp, csrf);
+  if (verificationType == "email") {
+    MFACodeDataResp.emailMfa = email;
+    MFACodeDataResp.verificationCode = code;
+  }
+
+  if (verificationType == "phone") {
+    MFACodeDataResp.strongAuthenticationPhoneNumber = verificationPhone;
+    MFACodeDataResp.verificationCode = code;
+  }
+
+  if (verificationType == "otp") {
+    MFACodeDataResp.otpCode = code;
+  }
+
+  await postRequest(email, postMFACodeRespURL, MFACodeDataResp, csrf);
 
   // Retrieve authorization code
   const authCodeRequestURL = authConfig.endpoints.confirmMfaUrl(
@@ -192,7 +319,7 @@ app.post("/mfa", async (req, res) => {
   );
 
   // Get auth Code request url
-  var authResponse = await captureRedirectLocation(authCodeRequestURL);
+  var authResponse = await captureRedirectLocation(email, authCodeRequestURL);
 
   var authCode = getRegexMatch(authResponse, `code=(.*)`);
 
@@ -217,7 +344,9 @@ app.post("/vehicles", async (req, res) => {
   // Validate required parameters
   if (!validateInputs({ email, uuid }, res)) return;
 
+  // VIN may not be required for this endpoint
   let vin = "";
+
   // Prepare the request
   const requestSetup = await setupRequest(email, vin, uuid, res);
   if (!requestSetup) return; // Error handled in setupRequest
@@ -229,11 +358,11 @@ app.post("/vehicles", async (req, res) => {
     includeCommands: true,
     includeEntitlements: true,
     includeModules: true,
-    includeSharedVehicles: true
+    includeSharedVehicles: true,
   };
 
   // Process the command
-  const result = await getVehicles(postData, config);
+  const result = await getVehicles(email, postData, config);
 
   if (result.success) {
     res.send(result); // Successfully processed
@@ -252,17 +381,29 @@ Object.keys(commands).forEach((command) => {
     // Validate required parameters
     if (!validateInputs({ email, vin, uuid }, res)) return;
 
+    // Create an Axios client specific to the user
+    const axiosClient = await createAxiosClient(email);
+
     // Prepare the request
     const requestSetup = await setupRequest(email, vin, uuid, res);
     if (!requestSetup) return; // Error handled in setupRequest
 
     const { config } = requestSetup;
 
+    // Command to execute
+    const commandUrl = commands[command].url || false;
+    if (!commandUrl) {
+      return res.status(400).send({ error: "Invalid command configuration" });
+    }
+
     // Get specific postData for the command, if available
     const postData = commands[command].postData || {};
 
     // Process the command
-    const result = await processCommand(command, vin, postData, config);
+    const result = await processCommand(email, commandUrl, vin, postData, {
+      ...config,
+      axiosClient, // Pass the Axios client
+    });
 
     if (result.success) {
       res.send(result); // Successfully processed

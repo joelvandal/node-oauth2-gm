@@ -177,18 +177,45 @@ This repository contains an unofficial Node.js library designed to facilitate in
 
 ### Vehicle Commands
 
-Commands include:
+The following commands are available, allowing interaction with the vehicle:
 
-- `start`
-- `cancelStart`
-- `lockDoor`
-- `unlockDoor`
-- `lockTrunk`
-- `unlockTrunk`
-- `location`
-- `alert`
-- `cancelAlert`
-- `diagnostics`
+- **`start`**: Remotely starts the vehicle.
+- **`cancelStart`**: Cancels a previous remote start command.
+- **`lockDoor`**: Locks the doors.
+- **`unlockDoor`**: Unlocks the doors.
+- **`lockTrunk`**: Locks the trunk.
+- **`unlockTrunk`**: Unlocks the trunk.
+- **`location`**: Retrieves the vehicle's current location.
+- **`alert`**: Triggers a vehicle alert (honk horns/flash lights).
+- **`cancelAlert`**: Cancels a vehicle alert (honk horns/flash lights).
+- **`diagnostics`**: Retrieves diagnostic vehicle data.
+
+Additional commands include:
+
+- **`getHotspotInfo`**: Retrieves WiFi hotspot information.
+- **`sendTBTRoute`**: Calculates and sends turn-by-turn directions to the vehicle.
+- **`chargeOverride`**: Sends a charge override command.
+- **`getChargingProfile`**: Retrieves the current charging profile.
+- **`setChargingProfile`**: Sets a new charging profile.
+- **`getCommuteSchedule`**: Retrieves the commuting schedule.
+- **`setCommuteSchedule`**: Updates the commuting schedule.
+- **`stopFastCharge`**: Stops the current fast charge.
+- **`createTripPlan`**: Creates a new trip plan.
+- **`getTripPlan`**: Retrieves an existing trip plan.
+- **`getHotspotStatus`**: Retrieves WiFi hotspot status.
+- **`setHotspotInfo`**: Updates the WiFi SSID and passphrase.
+- **`disableHotspot`**: Disables the WiFi hotspot.
+- **`enableHotspot`**: Enables the WiFi hotspot.
+- **`stopCharge`**: Stops the charging process.
+- **`setHvacSettings`**: Configures the HVAC settings remotely.
+- **`getChargerPowerLevel`**: Retrieves the current charger power level.
+- **`setChargerPowerLevel`**: Sets a new charger power level.
+- **`getRateSchedule`**: Retrieves the EV rate schedule.
+- **`setRateSchedule`**: Sets a new EV rate schedule.
+- **`setPriorityCharging`**: Configures priority charging.
+- **`getPriorityCharging`**: Retrieves the priority charging configuration.
+- **`startTrailerLightSeq`**: Starts the trailer light sequence.
+- **`stopTrailerLightSeq`**: Stops the trailer light sequence.
 
 All commands require the following parameters in the request body:
 

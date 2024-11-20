@@ -1,8 +1,31 @@
 {
+  "name": "node-oauth2-gm",
+  "version": "1.0.0",
+  "description": "Unofficial Node.js Library for OnStar Requests",
+  "main": "auth/app.js",
+  "keywords": [
+    "OnStar",
+    "GM",
+    "authentication",
+    "OpenID",
+    "API",
+    "OAuth",
+    "vehicles"
+  ],
+  "author": "Joel Vandal <joel@vandal.ca>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joelvandal/node-oauth2-gm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joelvandal/node-oauth2-gm/issues"
+  },
+  "homepage": "https://github.com/joelvandal/node-oauth2-gm#readme",
   "type": "module",
   "scripts": {
     "start": "node auth/app.js",
-    "dev": "nodemon --ignore 'sessions/*' --ignore 'tokens/*' auth/app.js",
+    "dev": "nodemon --ignore 'sessions/*' --ignore 'tokens/*' --ignore 'cookies/*' auth/app.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."
@@ -24,5 +47,8 @@
     "globals": "^15.12.0",
     "nodemon": "^2.0.22",
     "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
