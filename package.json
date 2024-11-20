@@ -36,6 +36,7 @@
     "fastify": "^5.1.0",
     "http-cookie-agent": "^6.0.6",
     "openid-client": "^5.7.0",
+    "qs": "^6.13.1",
     "tough-cookie": "^5.0.0"
   },
   "devDependencies": {
