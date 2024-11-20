@@ -243,6 +243,16 @@ Use a random version 4 UUID as the `deviceId` for vehicle interactions. This ens
 - [axios](https://github.com/axios/axios): HTTP client.
 - [tough-cookie](https://github.com/salesforce/tough-cookie): Cookie handling.
 
+## Funding 💖
+
+If you'd like to support this project and my work, here are a few options:
+
+- **[Buy Me a Coffee](https://buymeacoffee.com/jvandal):** Show your support by buying me a coffee!
+- **[PayPal](https://paypal.me/joelvandal):** Send your contributions directly via PayPal.
+- **Interac Transfer:** You can also send support via Interac to [joel@vandal.ca](mailto:joel@vandal.ca).
+
+Every contribution helps me dedicate more time to improving this project. Thank you! 🙌
+
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
