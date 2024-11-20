@@ -12,6 +12,16 @@ This repository contains an unofficial Node.js library designed to facilitate in
 - **Vehicle Commands**: Provides endpoints to send requests such as locking/unlocking doors, starting the vehicle, and diagnostics.
 - **Utility Functions**: Modular codebase with reusable utility functions.
 
+## Supported MFA Methods 🔒
+
+This library supports the following Multi-Factor Authentication (MFA) methods for enhanced security:
+
+- **Email:** Fully supported. MFA codes are sent to the user's registered email address.
+- **TOTP (Time-based One-Time Password):** Fully supported. Compatible with popular authenticator apps like Google Authenticator, Authy, or Microsoft Authenticator.
+- **SMS:** *Currently under development.* Support for SMS-based MFA will be available in a future release.
+
+Stay tuned for updates on SMS support!
+
 ## Prerequisites
 
 - Node.js (v18 or later)
