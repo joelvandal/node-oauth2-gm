@@ -29,7 +29,7 @@ import {
 
 import { ensureTokensDir, saveTokens } from "./tokens.js";
 
-import { ensureCookiesDir } from "./cookies.js";
+import { ensureCookiesDir, deleteCookieJar } from "./cookies.js";
 
 import { generators } from "openid-client";
 
@@ -67,6 +67,9 @@ app.post("/auth", async (req, res) => {
 
   // Validate input
   if (!validateInputs({ email, password }, res)) return;
+
+  // Cleanup cookie on initial authentication
+  await deleteCookieJar(email);
 
   // Create an Axios client specific to the user
   const axiosClient = await createAxiosClient(email);

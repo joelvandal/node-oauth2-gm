@@ -57,3 +57,23 @@ export async function saveCookieJar(email, jar) {
     console.error("Error saving cookie jar:", err);
   }
 }
+
+/**
+ * Delete the entire cookie jar for a specific user.
+ * @param {string} email - The email associated with the cookie jar.
+ */
+export async function deleteCookieJar(email) {
+  const jarPath = getCookieJarPath(email);
+
+  try {
+    await fs.unlink(jarPath); // Delete the cookie jar file
+    console.log(`Cookie jar for ${email} has been deleted.`);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.warn(`No cookie jar found for ${email}, nothing to delete.`);
+    } else {
+      console.error("Error deleting cookie jar:", err);
+      throw err;
+    }
+  }
+}
