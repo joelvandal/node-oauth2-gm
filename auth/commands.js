@@ -22,6 +22,10 @@ export const commands = {
   },
   start: {
     url: "commands/start", // Remotely starts the vehicle.
+    postData: {
+      cabinTemperature: false,
+      delay: 0,
+    },
   },
   cancelStart: {
     url: "commands/cancelStart", // Cancels previous remote start command.

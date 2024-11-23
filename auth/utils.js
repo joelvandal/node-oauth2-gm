@@ -1,11 +1,7 @@
 import { authConfig } from "./config.js";
 import axios from "axios";
-import { CookieJar } from "tough-cookie";
 import { HttpCookieAgent, HttpsCookieAgent } from "http-cookie-agent/http";
-import fs from "fs/promises";
-import path from "path";
 import * as openidClient from "openid-client";
-import crypto from "crypto";
 import qs from "qs";
 
 import { loadAccessToken } from "./tokens.js";
