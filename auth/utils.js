@@ -233,6 +233,19 @@ export async function getRequest(email, url) {
     })
     .catch((error) => {
       console.error("Error:", error.message);
+
+      if (error.response) {
+        console.error("Error Status Code:", error.response.status);
+        console.error("Error Status Text:", error.response.statusText);
+        console.error("Error Headers:", error.response.headers);
+        console.error("Error Data:", error.response.data);
+      } else if (error.request) {
+        // Si aucune réponse n'est reçue
+        console.error("No Response Received:", error.request);
+      } else {
+        // Autres erreurs (configuration, etc.)
+        console.error("Error Config:", error.config);
+      }
     });
   return responseObj;
 }
@@ -343,8 +356,8 @@ export const sendCommandAndWait = async (
   commandUrl,
   postData,
   config,
-  maxRetries = 10,
-  delayMs = 10000,
+  maxRetries = 20,
+  delayMs = 6000,
 ) => {
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -376,7 +389,8 @@ export const sendCommandAndWait = async (
             followUpResponse.data &&
             followUpResponse.data.commandResponse.status !== "inProgress"
           ) {
-            console.log("Follow-up completed:", followUpResponse.data);
+            console.log("Follow-up completed:");
+            console.dir(followUpResponse.data, { depth: null });
             return { success: true, data: followUpResponse.data };
           }
           // console.log(`Status still inProgress:`, followUpResponse.data);
