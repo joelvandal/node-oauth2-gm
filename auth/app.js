@@ -71,9 +71,6 @@ app.post("/auth", async (req, res) => {
   // Cleanup cookie on initial authentication
   await deleteCookieJar(email);
 
-  // Create an Axios client specific to the user
-  const axiosClient = await createAxiosClient(email);
-
   // Delete session data
   await deleteSession(email);
 
@@ -379,8 +376,7 @@ app.post("/vehicles", async (req, res) => {
  */
 Object.keys(commands).forEach((command) => {
   app.post(`/${command}`, async (req, res) => {
-    const { email, vin, uuid } = req.body;
-
+    const { email, vin, uuid, ...additionalParams } = req.body;
     // Validate required parameters
     if (!validateInputs({ email, vin, uuid }, res)) return;
 
@@ -400,13 +396,30 @@ Object.keys(commands).forEach((command) => {
     }
 
     // Get specific postData for the command, if available
-    const postData = commands[command].postData || {};
+    const defaultPostData = commands[command].postData || {};
+    const mergedPostData = {
+      ...defaultPostData,
+      ...additionalParams, // Overrides defaults with user-provided values
+    };
+
+    // Remove any false or undefined values if needed
+    const filteredPostData = Object.fromEntries(
+      Object.entries(mergedPostData).filter(
+        ([_, value]) => value !== false && value !== undefined, // eslint-disable-line no-unused-vars
+      ),
+    );
 
     // Process the command
-    const result = await processCommand(email, commandUrl, vin, postData, {
-      ...config,
-      axiosClient, // Pass the Axios client
-    });
+    const result = await processCommand(
+      email,
+      commandUrl,
+      vin,
+      filteredPostData,
+      {
+        ...config,
+        axiosClient, // Pass the Axios client
+      },
+    );
 
     if (result.success) {
       res.send(result); // Successfully processed
