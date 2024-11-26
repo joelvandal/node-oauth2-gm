@@ -27,7 +27,7 @@ import {
   getAccessToken,
 } from "./utils.js";
 
-import { ensureTokensDir, saveTokens } from "./tokens.js";
+import { loadAccessToken, ensureTokensDir, saveTokens } from "./tokens.js";
 
 import { ensureCookiesDir, deleteCookieJar } from "./cookies.js";
 
@@ -233,7 +233,7 @@ app.post("/auth", async (req, res) => {
 /**
  * Endpoint to handle MFA verification and complete authentication
  */
-app.post("/mfa", async (req, res) => {
+app.post("/verify", async (req, res) => {
   const { email, code } = req.body;
 
   // Validate input
@@ -333,6 +333,36 @@ app.post("/mfa", async (req, res) => {
   await deleteSession(email);
 
   res.send({ success: true, message: "MFA completed, tokens saved." });
+});
+
+/**
+ * Endpoint to retrieve MS Auth Token for a given email
+ */
+app.get("/token", async (req, res) => {
+  const email = req.query.email;
+
+  // Validate email
+  if (!email) {
+    res.status(400).send({ success: false, error: "Email is required."
+  });
+  }
+
+  try {
+    console.log(`Fetching MS token for ${email}`);
+
+    // Read token data
+    const tokenData = await loadAccessToken(email);
+
+    if (!tokenData || !tokenData.access_token) {
+      res.status(404).send({ success: false, error: "Token not found." });
+      return;
+   }
+   
+    res.send({ success: true, access_token: tokenData.access_token });
+  } catch (error) {
+    console.error("Error fetching token:", error);
+    res.status(500).send({ success: false, error: "Failed to retrieve token." });
+  }
 });
 
 /**

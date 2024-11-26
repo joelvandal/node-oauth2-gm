@@ -18,7 +18,7 @@ This library supports the following Multi-Factor Authentication (MFA) methods fo
 
 - **Email:** Fully supported. MFA codes are sent to the user's registered email address.
 - **TOTP (Time-based One-Time Password):** Fully supported. Compatible with popular authenticator apps like Google Authenticator, Authy, or Microsoft Authenticator.
-- **SMS:** *Currently under development.* Support for SMS-based MFA will be available in a future release.
+- **SMS:** _Currently under development._ Support for SMS-based MFA will be available in a future release.
 
 Stay tuned for updates on SMS support!
 
@@ -112,7 +112,7 @@ Stay tuned for updates on SMS support!
   }
   ```
 
-### `/mfa`
+### `/verify`
 
 - **Method**: `POST`
 - **Description**: Submits the MFA code for verification.
@@ -128,6 +128,21 @@ Stay tuned for updates on SMS support!
   {
     "success": true,
     "message": "MFA completed, tokens saved."
+  }
+  ```
+
+### `/token`
+
+- **Method**: `GET`
+- **Description**: Retrieve MS Auth Token for a given email
+- **Query Parameter**:
+  - email (string, required): The email address associated with the MS Auth Token.
+
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "access_token": "ACCESS_TOKEN"
   }
   ```
 
